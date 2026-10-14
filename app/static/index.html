@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demand Forecast Monitor</title>
+  <script>
+    // Apply the saved or system theme before the page paints (avoids a light flash in dark mode)
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("df-theme"); } catch (e) {}
+      if (t !== "light" && t !== "dark") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%274%27 fill=%27%231f6fd1%27/%3E%3C/svg%3E">
+  <script src="/static/vendor/chart.umd.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">DF</span><span>Demand Forecast<br><small>Monitor</small></span></div>
+    <nav>
+      <a class="nav-item active" href="/">Dashboard</a>
+      <span class="nav-item disabled" title="Coming later">Reports</span>
+      <span class="nav-item disabled" title="Coming later">Logs</span>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.5 10 3l7 6.5V17a1 1 0 0 1-1 1h-4v-5H8v5H4a1 1 0 0 1-1-1z" fill="currentColor"/></svg><span class="sep">/</span><span>Dashboard</span></div>
+      <div class="theme-toggle" role="group" aria-label="Colour theme">
+        <button type="button" data-theme-set="light" aria-pressed="false">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.6" fill="currentColor"/><g stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 1.8v2.2M10 16v2.2M1.8 10H4M16 10h2.2M4.2 4.2l1.6 1.6M14.2 14.2l1.6 1.6M4.2 15.8l1.6-1.6M14.2 5.8l1.6-1.6"/></g></svg>Light
+        </button>
+        <button type="button" data-theme-set="dark" aria-pressed="false">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 12.6A6.5 6.5 0 0 1 7.4 4.5a6.5 6.5 0 1 0 8.1 8.1z" fill="currentColor"/></svg>Dark
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="card controls">
+        <div class="controls-head">
+          <div>
+            <p class="eyebrow">Report controls</p>
+            <h1>Choose a demand window</h1>
+          </div>
+          <p class="avail" id="avail">Loading availability…</p>
+        </div>
+
+        <div class="controls-grid">
+          <label class="field">
+            <span class="field-label">DISCOM</span>
+            <select id="discom"></select>
+            <span class="hint" id="discomHint"></span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Revision number</span>
+            <select id="revision"></select>
+          </label>
+
+          <div class="field period">
+            <span class="field-label"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1v2M12 1v2M2 5h12M3 3h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Report period</span>
+            <div class="period-row">
+              <div class="combo" id="periodCombo">
+                <button type="button" class="combo-btn" id="periodBtn" aria-haspopup="listbox" aria-expanded="false">Day</button>
+                <div class="combo-panel" id="periodPanel" hidden>
+                  <input type="text" id="periodSearch" placeholder="Search report period" autocomplete="off">
+                  <ul role="listbox" id="periodList"></ul>
+                </div>
+              </div>
+              <div class="period-inputs" id="periodInputs">
+                <input type="date" id="dayInput" aria-label="Day">
+                <input type="week" id="weekInput" aria-label="Week" hidden>
+                <input type="month" id="monthInput" aria-label="Month" hidden>
+                <div class="custom" id="customInputs" hidden>
+                  <label><span>From (inclusive)</span><input type="date" id="fromInput"></label>
+                  <label><span>To (inclusive)</span><input type="date" id="toInput"></label>
+                </div>
+              </div>
+            </div>
+            <p class="hint" id="periodHint">One full day in IST.</p>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="btn primary" id="loadBtn">Load report</button>
+            <button type="button" class="btn" id="csvBtn" title="All DISCOMs and Odisha sum, all revisions, for the selected period">Download Excel</button>
+          </div>
+        </div>
+        <p class="status" id="status" role="status"></p>
+      </section>
+
+      <section class="kpis" id="cards" hidden>
+        <article class="card kpi"><span class="dot actual"></span><p>Average actual</p><strong id="kpiActual">–</strong><small>MW across matched intervals</small></article>
+        <article class="card kpi"><span class="dot fc"></span><p>Average forecast</p><strong id="kpiForecast">–</strong><small>MW across matched intervals</small></article>
+        <article class="card kpi"><span class="dot mape"></span><p>MAPE</p><strong id="kpiMape">–</strong><small id="kpiMatched">–</small></article>
+      </section>
+
+      <section class="card" id="revCard" hidden>
+        <p class="eyebrow">All revisions</p>
+        <h2 id="revTitle">Accuracy by revision</h2>
+        <div class="table-wrap">
+          <table class="rev-table">
+            <thead><tr><th>Revision</th><th class="num">Average actual (MW)</th><th class="num">Average forecast (MW)</th><th class="num">MAPE (%)</th><th class="num">Matched intervals</th></tr></thead>
+            <tbody id="revBody"></tbody>
+          </table>
+        </div>
+        <p class="hint">MAPE = average of |Actual − Forecast| ÷ Actual over matched 15-minute intervals. Averages use the same intervals.</p>
+      </section>
+
+      <section class="card chart-card" id="chartCard" hidden>
+        <div class="chart-head">
+          <div>
+            <h2 id="chartTitle">Forecast versus Actual</h2>
+            <p class="sub">15-minute MW blocks · Date/time in IST</p>
+          </div>
+          <div class="zoom" role="group" aria-label="Chart zoom">
+            <button type="button" class="zbtn" id="zoomOut" aria-label="Zoom out">−</button>
+            <span class="zlevel" id="zoomLevel">1.0×</span>
+            <button type="button" class="zbtn" id="zoomIn" aria-label="Zoom in">+</button>
+            <button type="button" class="zreset" id="zoomReset">Reset zoom</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="chart" aria-label="Forecast versus actual demand chart" role="img"></canvas></div>
+        <div class="range">
+          <label class="range-field"><span>From</span><input type="range" id="rangeFrom" min="0" max="0" value="0" aria-label="Chart start"></label>
+          <label class="range-field"><span>To</span><input type="range" id="rangeTo" min="0" max="0" value="0" aria-label="Chart end"></label>
+        </div>
+        <p class="range-label" id="rangeLabel"></p>
+        <p class="hint" id="chartNote"></p>
+      </section>
+
+      <section class="card interval-card" id="tableCard" hidden>
+        <div class="interval-head">
+          <div>
+            <p class="eyebrow">Interval detail</p>
+            <h2>Demand report</h2>
+          </div>
+          <p class="avail" id="tableNote">Scroll to review all intervals</p>
+        </div>
+        <div class="interval-wrap">
+          <table class="interval-table"><thead id="dataHead"></thead><tbody id="dataBody"></tbody></table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

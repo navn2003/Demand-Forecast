@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn>=0.29
+pymysql>=1.1
+python-dotenv>=1.0
+cryptography>=42
+openpyxl>=3.1
