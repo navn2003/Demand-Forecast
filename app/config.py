@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -34,3 +35,16 @@ class DbSettings:
 
 
 DB = DbSettings()
+
+
+@dataclass(frozen=True)
+class AuthSettings:
+    username: str = os.getenv("AUTH_USERNAME", "Admin")
+    password: str = os.getenv("AUTH_PASSWORD", "Demand@123")
+    # Signs the login cookie. Set a fixed value in .env; if missing, a random one is made at
+    # start-up, which means everyone is logged out whenever the server restarts.
+    secret: str = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
+    session_hours: int = int(os.getenv("SESSION_HOURS", "12"))
+
+
+AUTH = AuthSettings()

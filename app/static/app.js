@@ -126,6 +126,10 @@ function setStatus(msg, error = false) { $("status").textContent = msg; $("statu
 /* ---------- API ---------- */
 async function getJSON(url) {
   const r = await fetch(url);
+  if (r.status === 401) { // session expired or logged out in another tab: back to the login page
+    window.location.href = "/login";
+    throw new Error("Session expired. Redirecting to sign in…");
+  }
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.detail || `Request failed (${r.status})`);
   return body;

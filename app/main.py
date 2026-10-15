@@ -12,12 +12,15 @@ import io
 import os
 from datetime import date
 
+from urllib.parse import parse_qs, quote
+
 import pymysql
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import ALL, REVISION_LABELS, REVISIONS
+from .auth import COOKIE_NAME, check_credentials, is_public, make_session, read_session, safe_next
+from .config import ALL, AUTH, REVISION_LABELS, REVISIONS
 from .export import build_workbook
 from .report import availability, build_report, list_discoms, validate_period
 
@@ -26,8 +29,57 @@ app = FastAPI(title="Demand Forecast Monitor")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    """Every page and API call needs a valid session, except the login page and static files."""
+    path = request.url.path
+    if is_public(path) or read_session(request.cookies.get(COOKIE_NAME)):
+        response = await call_next(request)
+        if path.startswith("/static/") or path in ("/", "/login"):
+            # Browser must re-check with the server each time, so edited CSS/JS show up without a hard refresh
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "Not logged in"}, status_code=401)
+    return RedirectResponse(f"/login?next={quote(path)}", status_code=303)
+
+
 def _db_error(e: Exception) -> HTTPException:
     return HTTPException(status_code=503, detail=f"Database error: {e}")
+
+
+@app.get("/login")
+def login_page(request: Request):
+    if read_session(request.cookies.get(COOKIE_NAME)):
+        return RedirectResponse(safe_next(request.query_params.get("next")), status_code=303)
+    return FileResponse(os.path.join(STATIC, "login.html"))
+
+
+@app.post("/login")
+async def login_submit(request: Request) -> RedirectResponse:
+    # Plain HTML form post (application/x-www-form-urlencoded), parsed by hand so no extra package is needed
+    form = parse_qs((await request.body()).decode("utf-8"))
+    username = form.get("username", [""])[0].strip()
+    password = form.get("password", [""])[0]
+    nxt = safe_next(form.get("next", ["/"])[0])
+    if not check_credentials(username, password):
+        return RedirectResponse(f"/login?error=1&next={quote(nxt)}", status_code=303)
+    resp = RedirectResponse(nxt, status_code=303)
+    resp.set_cookie(COOKIE_NAME, make_session(username), max_age=AUTH.session_hours * 3600,
+                    httponly=True, samesite="lax", secure=request.url.scheme == "https")
+    return resp
+
+
+@app.post("/logout")
+def logout() -> RedirectResponse:
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
+
+
+@app.get("/api/me")
+def me(request: Request) -> dict:
+    return {"username": read_session(request.cookies.get(COOKIE_NAME))}
 
 
 @app.get("/")
